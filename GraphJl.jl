@@ -5,11 +5,23 @@ idx = 1
 
 abstract type Node end
 
-mutable struct UndirectedNode
+mutable struct UndirectedNode <: Node
     name
     neighbors::Set{Node}
     id::Int
     function UndirectedNode(name, neighbors)  
+        global idx
+        node = new(name, neighbors, idx)
+        idx +=1 
+        node
+    end
+end
+
+mutable struct DirectedNode <: Node
+    name
+    neighbors:: Dict{Node, Array{Node}}
+    id::Int
+    function DirectedNode(name, neighbors)  
         global idx
         node = new(name, neighbors, idx)
         idx +=1 
@@ -27,7 +39,15 @@ UndirectedNode(name, neighbors::Set{Node}) = UndirectedNode(name, neighbors)
 function addNeighbors!(node::UndirectedNode, neighbors::UndirectedNode...)
     for neighbor in neighbors
         if !in(neighbor, node.neighbors)
-            node.neighbors = push!(node.neighbors, neighbor)
+            node.neighbors[neighbor]= 
+            neighbor.neighbors = push!(neighbor.neighbors, node)
+        end
+    end
+end
+
+function addNeighbors!(node::DirectedNode, neighbors::DirectedNode...)
+    for neighbor in neighbors
+        node.neighbors = push!(node.neighbors, neighbor)
             neighbor.neighbors = push!(neighbor.neighbors, node)
         end
     end
@@ -52,15 +72,37 @@ function setId!(node, id)
     node
 end
 
-mutable struct Graph
-    nodes::Dict{Int, Node}
+###   Frontier Class  -----------------------------------------------------------
+abstract type Frontier end
 
+struct BreadthFrontier <: Frontier 
+    frontier::DataStructures.Queue{Node}
+end
+
+BreadthFrontier() = BreadthFrontier(DataStructures.Queue{Node}())
+
+push!(frontier::BreadthFrontier, node::Node) =  DataStructures.enqueue!(frontier.frontier, node)
+pop!(frontier::Frontier) = DataStructures.dequeue!(frontier.frontier)
+length(frontier::Frontier) = length(frontier.frontier)
+    
+function addNeighborsToFrontier(frontier::Frontier, node::Node, explored::Dict)
+    neighbors = collect(values(node.neighbors))
+    shuffledNeighbors = [neighbors[i] for i in Random.randperm(length(neighbors))]
+    for neighbor in shuffledNeighbors
+        if(!(neighbor.id in keys(explored))) 
+            push!(frontier, neighbor) 
+        end
+    end
 end
 
 ###   GRAPH TYPE  ------------------------------------------------------------
+mutable struct Graph
+    nodes::Dict
+
+end
 
 Graph()= Graph(Dict())
-Graph(nodes::Array{Node}) = Graph(Dict(node.id => node for node in nodes))
+Graph(nodes::Array{ <: Node}) = Graph(Dict(node.id => node for node in nodes))
 
 function connect!(G::Graph, outsideNodes::Node...)
     for outsideNode in outsideNodes
@@ -172,33 +214,11 @@ function drawPath(path, G)
     GraphPlot.gplot(LightGraphs.Graph(matrix), nodelabel=names, nodefillc=nodeFill)
 end
 
-###   Frontier Class  -----------------------------------------------------------
-abstract type Frontier end
-
-struct BreadthFrontier <: Frontier 
-    frontier::DataStructures.Queue{Node}
-end
-
-BreadthFrontier() = BreadthFrontier(DataStructures.Queue{Node}())
-
-push!(frontier::BreadthFrontier, node::Node) =  DataStructures.enqueue!(frontier.frontier, node)
-pop!(frontier::Frontier) = DataStructures.dequeue!(frontier.frontier)
-length(frontier::Frontier) = length(frontier.frontier)
-    
-function addNeighborsToFrontier(frontier::Frontier, node::Node, explored::Dict)
-    neighbors = collect(values(node.neighbors))
-    shuffledNeighbors = [neighbors[i] for i in Random.randperm(length(neighbors))]
-    for neighbor in shuffledNeighbors
-        if(!(neighbor.id in keys(explored))) 
-            push!(frontier, neighbor) 
-        end
-    end
-end
 
 #    Testing Sandbox ------------------------------------------------------------------------------------
 
 
-n, n2, n3, n4, n5, n6,n 7, n8 = [UndirectedNode(i) for i in 1:8]
+n, n2, n3, n4, n5, n6, n7, n8 = [UndirectedNode(i) for i in 1:8]
 addNeighbors!(n,n2, n3)
 addNeighbors!(n2, n5)
 addNeighbors!(n, n4)
@@ -216,11 +236,6 @@ path = searchPath(G, n5, n3, frontier )
 print(G)
 startNode = n5
 endNode = n3
-
-
-
-
-
 
 
 
