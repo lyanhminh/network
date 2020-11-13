@@ -3,11 +3,13 @@ import Base: push!, pop!, length
 
 idx = 1
 
-mutable struct Node
+abstract type Node end
+
+mutable struct UndirectedNode
     name
     neighbors::Set{Node}
     id::Int
-    function Node(name, neighbors)  
+    function UndirectedNode(name, neighbors)  
         global idx
         node = new(name, neighbors, idx)
         idx +=1 
@@ -18,11 +20,11 @@ end
 
 ### NODE TYPE
 
-Node() = Node(nothing, Set([]) )
-Node(name) = Node(name,Set([]))
-Node(name, neighbors::Set{Node}) = Node(name, neighbors)
+UndirectedNode() = UndirectedNode(nothing, Set([]) )
+UndirectedNode(name) = UndirectedNode(name,Set([]))
+UndirectedNode(name, neighbors::Set{Node}) = UndirectedNode(name, neighbors)
 
-function addNeighbors!(node::Node, neighbors::Node...)
+function addNeighbors!(node::UndirectedNode, neighbors::UndirectedNode...)
     for neighbor in neighbors
         if !in(neighbor, node.neighbors)
             node.neighbors = push!(node.neighbors, neighbor)
@@ -75,7 +77,7 @@ function print(G::Graph)
     end
 end
 
-function searchPath(G::Graph, startNode::Node, target::Node, frontier::Frontier)
+function searchPath(G::Graph, startNode::UndirectedNode, target::UndirectedNode, frontier::Frontier)
     explored = Dict()
     push!(frontier, startNode)
     
@@ -196,14 +198,7 @@ end
 #    Testing Sandbox ------------------------------------------------------------------------------------
 
 
-n = Node(1)
-n2 = Node(2)
-n3 = Node(3)
-n4 = Node(4)
-n5 = Node(5)
-n6 = Node(6)
-n7 = Node(7)
-n8 = Node(8)
+n, n2, n3, n4, n5, n6,n 7, n8 = [UndirectedNode(i) for i in 1:8]
 addNeighbors!(n,n2, n3)
 addNeighbors!(n2, n5)
 addNeighbors!(n, n4)
@@ -222,6 +217,14 @@ print(G)
 startNode = n5
 endNode = n3
 
+
+
+
+
+
+
+
+########################################### MAIN  ################################################
 function main()
 
     n = Node(1)
