@@ -7,7 +7,7 @@ abstract type Node end
 
 mutable struct UndirectedNode <: Node
     name
-    neighbors::Set{Node}
+    neighbors::Dict{Node, Real}
     id::Int
     function UndirectedNode(name, neighbors)  
         global idx
@@ -17,60 +17,76 @@ mutable struct UndirectedNode <: Node
     end
 end
 
-mutable struct DirectedNode <: Node
+mutable struct WeightedNode <: Node
     name
-    neighbors:: Dict{Node, Array{Node}}
+    neighbors::Dict{Node, Real}
     id::Int
-    function DirectedNode(name, neighbors)  
+    function WeightedNode(name, neighbors)  
         global idx
         node = new(name, neighbors, idx)
         idx +=1 
         node
     end
 end
-
-
 ### NODE TYPE
 
-UndirectedNode() = UndirectedNode(nothing, Set([]) )
-UndirectedNode(name) = UndirectedNode(name,Set([]))
-UndirectedNode(name, neighbors::Set{Node}) = UndirectedNode(name, neighbors)
+UndirectedNode() = UndirectedNode(nothing, Dict() )
+UndirectedNode(name) = UndirectedNode(name,Dict())
+UndirectedNode(name, neighbors::Array{Node}) = UndirectedNode(name, Dict(node => 1 for node in neighbors))
 
-function addNeighbors!(node::UndirectedNode, neighbors::UndirectedNode...)
+WeightedNode() = WeightedNode(nothing, Dict() )
+WeightedNode(name) = WeightedNode(name, Dict())
+WeightedNode(name, neighbors::Dict{Node, Real}) = WeightedNode(name, neighbors)
+
+function addNeighbors!(node::UndirectedNode, neighbors :: Node...)
     for neighbor in neighbors
-        if !in(neighbor, node.neighbors)
-            node.neighbors[neighbor]= 
-            neighbor.neighbors = push!(neighbor.neighbors, node)
+        if !in(neighbor, keys(node.neighbors))
+            node.neighbors[neighbor] = 1
+            neighbor.neighbors[node] = 1
         end
     end
 end
 
-function addNeighbors!(node::DirectedNode, neighbors::DirectedNode...)
-    for neighbor in neighbors
-        node.neighbors = push!(node.neighbors, neighbor)
-            neighbor.neighbors = push!(neighbor.neighbors, node)
-        end
+function addNeighbors!(node::WeightedNode, neighbors :: Dict{WeightedNode, <: Number})
+    for (neighbor, weight) in neighbors
+        node.neighbors[neighbor] = weight    
+        neighbor.neighbors[node] = weight    
     end
+end
+
+function print(node :: Node, before, after)
+        println("$(before)id: $(node.id), name: $(node.name)$(after)")  
+end
+
+function print(node :: Node, before)
+        println("$(before)id: $(node.id), name: $(node.name)")  
 end
 
 function print(node::Node)
-        println("id: $(node.id), name: $(node.name)")  
+    println("id: $(node.id), name: $(node.name)")  
 end
 
+# function printNeighbors(node::UndirectedNode)
+#     for neighbor in node.neighbors
+#         print(neighbor, "neighbor: ")
+#     end
+# end
+
 function printNeighbors(node::Node)
-    for neighbor in node.neighbors
-        print(neighbor)
+    for (neighbor, weight) in node.neighbors
+        print(neighbor, "neighbor: ", ", weight: $(weight)")
     end
 end
 
 function isNeighbor(node::Node, target::Node)
-    !isempty(filter(neighbor -> neighbor.id == target.id, collect(values(node.neighbors)))) 
+    !isempty(filter(neighbor -> neighbor.id == target.id, collect(keys(node.neighbors)))) 
 end
 
 function setId!(node, id)
     node.id = id
     node
 end
+
 
 ###   Frontier Class  -----------------------------------------------------------
 abstract type Frontier end
@@ -86,7 +102,7 @@ pop!(frontier::Frontier) = DataStructures.dequeue!(frontier.frontier)
 length(frontier::Frontier) = length(frontier.frontier)
     
 function addNeighborsToFrontier(frontier::Frontier, node::Node, explored::Dict)
-    neighbors = collect(values(node.neighbors))
+    neighbors = collect(keys(node.neighbors))
     shuffledNeighbors = [neighbors[i] for i in Random.randperm(length(neighbors))]
     for neighbor in shuffledNeighbors
         if(!(neighbor.id in keys(explored))) 
@@ -97,12 +113,11 @@ end
 
 ###   GRAPH TYPE  ------------------------------------------------------------
 mutable struct Graph
-    nodes::Dict
+    nodes::Dict{Int, Node}
 
 end
-
 Graph()= Graph(Dict())
-Graph(nodes::Array{ <: Node}) = Graph(Dict(node.id => node for node in nodes))
+Graph(nodes::Array{<:Node}) = Graph(Dict(node.id => node for node in nodes))
 
 function connect!(G::Graph, outsideNodes::Node...)
     for outsideNode in outsideNodes
@@ -119,7 +134,7 @@ function print(G::Graph)
     end
 end
 
-function searchPath(G::Graph, startNode::UndirectedNode, target::UndirectedNode, frontier::Frontier)
+function searchPath(G::Graph, startNode::Node, target::Node, frontier::Frontier)
     explored = Dict()
     push!(frontier, startNode)
     
@@ -131,7 +146,7 @@ function searchPath(G::Graph, startNode::UndirectedNode, target::UndirectedNode,
         node = pop!(frontier)
         
         neighbors =  node.neighbors
-        for child in neighbors
+        for (child, weight) in neighbors
             if !(child in  keys(tag))
                 tag[child] =  node
             end
@@ -167,8 +182,8 @@ function asAdjacencyMatrix(G)
     nodesDict = Dict(idxVal => nodeKey for (nodeKey, idxVal) in indexed)
     adjacenyArrays = []
     for (node, idx) in indexed
-        neighborIndices = map(neighbor -> indexed[neighbor], collect(node.neighbors))
-        adjacencyArray = [i in neighborIndices ? 1 : 0 for i in 1:length(nodes)]
+        neighborIndices = map(neighbor -> indexed[neighbor], collect(keys(node.neighbors)))
+        adjacencyArray = [i in neighborIndices ? nodes[i].neighbors[node] : 0 for i in 1:length(nodes)]
         push!(adjacenyArrays, (idx, adjacencyArray))
     end
     A = reduce(hcat, map(x->x[2],sort(adjacenyArrays, by = x ->x[1])))
@@ -195,15 +210,28 @@ function showPath(path)
 end
 
 function drawGraph(G, names)
-    adjM = G
+    
     if  !(G isa Array)
         names, matrix = asAdjacencyMatrix(G)
         adjM = LightGraphs.Graph(matrix)
+    else
+        adjM = LightGraphs.Graph(G)
+        matrix = G
     end
     println(names)
     println(adjM)
-    GraphPlot.gplot(adjM, nodelabel = names)
+    edgeWeights = getEdgeWeights(matrix)
+    GraphPlot.gplot(adjM, nodelabel = names,  edgelabel=edgeWeights, edgelabelc=GraphPlot.colorant"white")
 end  
+
+function getEdgeWeights(adM)
+    weights = []
+    d = size(adM)[1]
+    for idx in 1:d
+        append!(weights, adM[idx, idx:d])
+    end
+    filter(weight -> weight != 0, weights)
+end
 
 function drawPath(path, G)
     namesPath = showPath(path)
@@ -211,14 +239,15 @@ function drawPath(path, G)
     nodecolor = [GraphPlot.colorant"orange", GraphPlot.colorant"lightseagreen"]
     membership = [x in namesPath ? 1 : 2 for x in names]
     nodeFill = nodecolor[membership]
-    GraphPlot.gplot(LightGraphs.Graph(matrix), nodelabel=names, nodefillc=nodeFill)
+    edgeWeights = getEdgeWeights(matrix)
+    GraphPlot.gplot(LightGraphs.Graph(matrix), nodelabel=names, nodefillc=nodeFill, edgelabel=edgeWeights, edgelabelc=GraphPlot.colorant"white")
 end
 
 
-#    Testing Sandbox ------------------------------------------------------------------------------------
+#   Testing Sandbox ------------------------------------------------------------------------------------
 
 
-n, n2, n3, n4, n5, n6, n7, n8 = [UndirectedNode(i) for i in 1:8]
+n, n2, n3, n4, n5, n6,n7, n8 = [UndirectedNode(i) for i in 1:8]
 addNeighbors!(n,n2, n3)
 addNeighbors!(n2, n5)
 addNeighbors!(n, n4)
@@ -236,6 +265,19 @@ path = searchPath(G, n5, n3, frontier )
 print(G)
 startNode = n5
 endNode = n3
+
+dn, dn2, dn3, dn4, dn5, dn6, dn7, dn8, dn9, dn10, dn11, dn12, dn13, dn14, dn15 = [WeightedNode(i) for i in 1:15]
+addNeighbors!(dn, Dict(dn2 => 1))
+addNeighbors!(dn2, Dict(dn => 1, dn9 =>1, dn8 => 3, dn3=> 4))
+addNeighbors!(dn3, Dict(dn5 => 2, dn4 => 4))
+addNeighbors!(dn5, Dict(dn6 => 8, dn7 => 3, dn11 =>2))
+addNeighbors!(dn6, Dict(dn10 => 1))
+addNeighbors!(dn7, Dict(dn8 => 2, ))
+addNeighbors!(dn8, Dict(dn11 => 1, dn12 =>1))
+addNeighbors!(dn10, Dict(dn13 => 1, dn9 =>9))
+
+DG = Graph([dn, dn2, dn3, dn4, dn5, dn6, dn7, dn8, dn9, dn10, dn11, dn12, dn13]) 
+
 
 
 
